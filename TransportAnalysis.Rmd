@@ -1,0 +1,286 @@
+---
+title: "Transport Analysis"
+output:
+  html_document: 
+    toc: true
+    toc_float: true
+fontsize: 14pt
+
+---
+```{r libs, echo=FALSE, message=FALSE, include=FALSE}
+source("global.R")
+library(gridExtra)
+
+```
+
+```{r functions, echo=FALSE, message=FALSE, include=FALSE, cache=TRUE}
+Transport.file=read_csv("/Users/nicolenisbett/OneDrive - University of Leeds/PhD/Data/Platform Experiments/Transport/Transport Comments.csv")
+Transport.tweetfile=read_csv("/Users/nicolenisbett/OneDrive - University of Leeds/PhD/Data/Platform Experiments/Transport/Pavement_Parking_tweets.csv")
+Transport.hours2=get_hours_fb(Transport.file, "TransportComments")
+Transport.dates2=get_dates_discourse(Transport.file, "TransportDebate")
+Transport.comments=get_comments(Transport.file, "Transport")
+Transport.tweets = get_tweet_comments2(Transport.tweetfile, "Transport")
+Transport.dtweets=Transport.tweets[!duplicated(Transport.tweets$message),]
+Transport.dtweets.corpus = clean_tweet_corpus(prep_corpus(Transport.dtweets))
+Transport.dtweets.corpus.df = get_corpus_df(Transport.dtweets.corpus)
+
+Transport.comments.clean=Transport.comments
+Transport.comments.clean[]<-lapply(Transport.comments, gsub, pattern= 'none', replacement='')
+Transport.corpus=clean_corpus(prep_corpus(Transport.comments.clean))
+Transport.corpus.df=get_corpus_df(Transport.corpus)
+Transport.frequencies=term_stats(Transport.corpus)
+Transport.dtm=get_dtm(Transport.corpus)
+Transport.dtm.bigram=get_dtm_bigram(Transport.corpus)
+
+ud_model <- udpipe_download_model(language = "english")
+ud_model <- udpipe_load_model(ud_model$file_model)
+Transport.ud=get_ud_data(Transport.comments.clean)
+Transport.3topics=get_topic_model(Transport.dtm, 3)
+Transport.3topics.bigram=get_topic_model(Transport.dtm.bigram, 3)
+Transport.btm = get_btm_model(Transport.comments, 3)
+Transport.idf = get_topic_idf(Transport.3topics, Transport.comments.clean)
+
+Transport.readability=get_readability(Transport.comments.clean)
+Transport.ages=estimate_ages(Transport.ud, Transport.readability)
+
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This report gives a brief summary of the textual analysis of the submissions to the Discourse discussion on Invasive Species by the Environmental Audit Select Committee, and the tweets using the #TransportInvasiveSpecies hashtag on Twitter. 
+
+
+### Summary of Key Points
+
+  * A total of **`r nrow(Transport.comments)`** comments were posted to Discourse in 7 different topics.
+  * A total of **`r nrow(Transport.tweets)`** tweets posted on Twitter, however only **`r nrow(Transport.dtweets)`** were unique (the rest being retweets or quotes).
+  * **20** (19%) of the Discourse comments posted were as replies to another comment.
+  * There were **95** unique participants on the Discourse platform.
+  * Approximately A-level educated participants.
+  * Generally quite positive submissions on Discourse with fear and trust also being common sentiments. Twitter comments has less variation in sentiments overall.
+  * Main issues raised are of squirrels in the UK.
+  
+  
+
+
+## Frequency Analysis {.tabset}
+
+Most comments were posted between the 10th - 17th May, with spikes in activity on the 15th and 10th May receiving 46 and 14 comments per day respectively. The timings of comments were spread throughout the day, with 3pm being the most popular time of day for users to be online. They were also very active at 6-7am, 9am, and 11am, and this pattern of peaks and troughs suggests users were revisiting the platform regularly throughout the day to respond to comments, especially in the morning.
+
+```{r timelines, echo=FALSE, fig.align='center',fig.width=10}
+#grid.arrange(
+subplot(
+  ggplotly(
+  ggplot(Transport.hours2, aes(x= TransportComments, y=Freq, group=1))+geom_line()+ xlab("Time") + ggtitle("Comments per hour")),
+
+  ggplotly(
+    ggplot(data=Transport.dates2) +geom_line(aes(as.Date(x=Transport.dates2[,1], format = "%d/%m/%Y"), y=Transport.dates2[,2])) + scale_x_date(name="Date", date_breaks = "3 day", date_minor_breaks = "1 day",  date_labels = "%b %d" ) + ylab("Number of Comments") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +ggtitle("Comments by Date")),
+titleX = TRUE, titleY = TRUE)
+#  ncol=2)  
+
+```
+
+
+The Discourse comments had an average of **`r round(mean(get_each_comment_length(Transport.comments)$Length))`** words in each compared to **`r round(mean(get_each_comment_length(Transport.dtweets)$Length))`** on Twitter, which is normal pattern to observe. There was an average Flesch readability score of `r round(mean(Transport.readability$Flesch))` suggesting readers needed to be educated to at least a UK Grade Level of `r round(mean(Transport.readability$Flesch.Kincaid)) + 1` to understand the comments.
+
+<!--
+
+```{r}
+summary(get_each_comment_length(Transport.comments)$Length)
+```
+
+```{r}
+display_term_frequencies(Transport.frequencies, "Transport Survey", 15 )
+```
+-->
+
+The most common adjectives, phrases and pairs of words are displayed below. People tend to express their emotions through the adjectives they use, and in this case "local", "responsible", and "dangerous" being used so often relate to the main concern of the discussion surrounding the safety aspects of pavement parking. The phrases "yellow line", "local authority", and "mobility scooter" also show a range of topics within the area were also being discussed.
+
+```{r frequencies, echo=FALSE,  tidy=TRUE, fig.width=10}
+{grid.arrange(display_adjectives(Transport.ud, 15), display_keywords(Transport.ud, 15), ncol=2)}
+```
+
+
+
+A network of the most frequent consecutive word pairs (bigrams) is shown below. 
+
+
+
+### Discourse
+
+"grey squirrels", "red squirrels", and "invasive species" are the most common word pairs in the Discourse dataset. A cluster comprising of phrases such as "alien/invasive/native species"  show a difference of terminology used in the discussion, while another cluster of phrases surrounding squirrels refers to the primary debate. "Japanese knotweed", "asian hornet" and "climate change" are also common bigrams and suggest alternative discussions that were ongoing independent of the squirrel debate. 
+
+```{r bigrams, echo=FALSE, tidy=TRUE, fig.width=15, fig.height=10}
+display_bigrams(Transport.comments, 3, "Transport Discussion")
+
+```
+
+
+
+### Twitter
+
+The Twitter discussion showed many retweets between different users including "wcl_news", "ukladybirds", and "tthecccuk". There were also repeated mentions of "prof helen roy", and discussions about the evidence sessions held by the committee. Different species were raised on twitter such as plants, animals, and fungus, and concerns such as "growing threat", "uk economy 2bn", and "harm pathogens" shows the range of topics which were being discussed using the #TransportInvasiveSpecies hashtag during the week.
+
+```{r tweetbigrams, echo=FALSE, tidy=TRUE, fig.width=15, fig.height=10}
+display_bigrams(Transport.dtweets, 20, "Transport Twitter")
+
+```
+
+***
+
+## Topic Extraction
+
+Within the Discourse platform, 3 topics were created by the Transport team considering different areas of pavement parking. 
+A plot of 10 words most associated with one of 3 topics are shown below. Each coloured bar chart represents a single topic. 
+
+
+<!---
+Topic 8 is primarily about the technicalities of the application process with words such as "home office", "6 months", "application process", and "long tedious". Topic 6 is primarily about the lengthy application process and the costs associated with this, for example "paper work", "took long", "long expensive". 
+--> 
+A brief summary of those topics are:
+
+Topic Number  | Common words 
+-------- | ------------------
+Topic 1  | hornets, honey bees, encroachment, relocated
+Topic 2  | license, pregnant, welsh, traps
+Topic 3  | disgusting, book, financial, UK, balance
+
+In this case, topics 4 and 2 were mainly about the red and grey squirrel debate while topics 1 and 6 centred around other species such as hornets, bees, and ducks. The model also extracted some comments which were about some participants' anger at their comments being flagged by other users of the platform for inappropriateness. 
+
+```{r, echo=FALSE, message = FALSE}
+#display_top_topics_btm(Transport.btm, 10, "Transport Discussion")
+
+Transport.idf %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>% 
+  group_by(Topic) %>% 
+  top_n(10) %>% 
+  ungroup() %>%
+  ggplot(aes(word, tf_idf, fill = as.factor(Topic))) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~Topic, ncol = 4, scales = "free") +
+  coord_flip()
+
+```
+
+
+
+
+
+Following the link below will provide an alternative topic model visualisation which is split into two sections:
+
+  * **Left** - showing topic distances from each other based on the types of words in each,
+
+  * **Right** – showing the top 30 words pairs in each topic (red bar) and overall in the dataset (blue bar). I recommend setting the relevance metric to 0.6 to get a more representative list of words in each topic.
+
+This visualisation is interactive, hover over each topic number to view the words in each topic, or select each word to view which topics it is relevant to.  
+
+https://nicolednisbett.github.io/Transport/#topic=0&lambda=0.60&term=
+<!--
+```{r servis, echo=FALSE, message=FALSE, warning=FALSE}
+serVis(topicmodels2LDAvis(Transport.3topics.bigram), out.dir="a", open.browser = FALSE)
+htmltools::includeHTML("a/index.html")
+```
+
+<head>
+  <script src="a/d3.v3.js"></script>
+  <script src="a/ldavis.js"></script>
+  <link rel="stylesheet" type="text/css" href="a/lda.css">
+</head>
+<body>
+  <div id = "mydiv"></div>
+  <script>
+    var vis = new LDAvis("#mydiv", "lda.json");
+  </script>
+</body>
+
+
+<iframe width="1000" height="800" src="a/index.html" frameborder="0"></iframe>
+
+-->
+
+
+## Sentiment Analysis 
+
+The wordcloud below gives the most popular words associated with positive and negative sentiments in the survey. Specific comments
+which are associated with the most popular sentiments are listed below.
+
+### Sentiment Clouds {.tabset}
+
+#### Discourse
+```{r swordcloud, echo=FALSE, message=FALSE, warning=FALSE}
+get_sentiments_wordcloud(get_bingnrc_word_frequencies(Transport.corpus.df, "bing"), "bing")
+```
+
+
+#### Twitter
+
+```{r tweetwordcloud, echo=FALSE, message=FALSE, warning=FALSE}
+get_sentiments_wordcloud(get_bingnrc_word_frequencies(Transport.dtweets.corpus.df, "bing"), "bing")
+```
+
+
+### Sentiment Categories {.tabset}
+
+The  **NRC** sentiment lexicon uses categorical scale to measure 2 sentiments (positive and negative), and 8 emotions (anger, anticipation, disgust, trust, joy, sadness, fear, and suprise).
+Examples of words and comments in these sentiment categories are below. 
+
+In the Discourse debate, the majority of submissions were equally negative and positive but also categorised as *trust*, *sadness*, and *fear*. 
+
+On the other hand, the Twitter discussion was much more positive overall with *anticipation* and *fear* being other prominent sentiments expressed. However, there were much fewer tweets than Discourse comments so this could impact the accuracy of the results.
+```{r nrc2, echo=FALSE, message=FALSE, fig.width=10}
+  grid.arrange(
+    plot_bingnrc_distributions(get_bingnrc_document_frequencies(Transport.corpus,"nrc"), "Transport Discourse Discussion", "nrc"),
+    
+    plot_bingnrc_distributions(get_bingnrc_document_frequencies(Transport.dtweets.corpus,"nrc"), "Transport Twitter Discussion", "nrc")
+  , ncol=2)
+```
+
+
+Hover over the plot below to read the content of the comments within Transporth sentiment category.
+
+#### Discourse
+
+```{r comments,echo=FALSE, message=FALSE, warning=FALSE }
+ggplotly(display_topic_comments(get_sentiment_comments(Transport.corpus.df, Transport.comments, "nrc"), "Invasive Species Discourse Discussion"), width=1000, height = 600) %>% config(displayModeBar=FALSE) %>% hide_legend()
+```
+
+
+***
+
+<!--
+An example of a comment categorised as **negative**
+
+  > `r Transport.comments[130,][[1]]`
+
+
+An example of a comment categorised as **positive**
+
+  > `r Transport.comments[64,][[1]]`
+
+
+An example of a comment categorised as **trust**
+
+  > `r Transport.comments[381,][[1]]`
+  
+An example of a comment categorised as **sadness**
+
+  > `r Transport.comments[373,][[1]]`
+
+An example of a comment categorised as **fear**
+
+  > `r Transport.comments[488,][[1]]`
+
+-->
+#### Twitter
+
+```{r tweets,echo=FALSE, message=FALSE, warning=FALSE }
+ggplotly(display_topic_comments(get_sentiment_comments(Transport.dtweets.corpus.df, Transport.dtweets, "nrc"), "Invasive Species Twitter Discussion"), width=1000, height = 600) %>% config(displayModeBar=FALSE) %>% hide_legend()
+```
+
+
+
